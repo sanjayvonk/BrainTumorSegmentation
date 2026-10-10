@@ -1,0 +1,123 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>NiiVue · Brain MRI Viewer</title>
+
+<style>
+  :root { color-scheme: dark; }
+  html, body {
+    margin: 0; height: 100%;
+    background: #0b0d10; color: #e6e6e6;
+    font-family: system-ui, sans-serif;
+  }
+  header {
+    position: fixed; top: 0; left: 0; right: 0;
+    background: #15181c; border-bottom: 1px solid #222;
+    display: flex; flex-wrap: wrap; gap: 1rem;
+    align-items: center; padding: 0.6rem 1rem; z-index: 10;
+  }
+  header strong { font-size: 1rem; color: #fff; }
+  label { display: flex; align-items: center; gap: .4rem; font-size: .9rem; }
+  input[type=range] { width: 160px; }
+  #nv {
+    position: absolute;
+    top: 48px; left: 0; right: 0; bottom: 0;
+    width: 100%; height: calc(100% - 48px);
+    display: block;
+  }
+</style>
+
+<header>
+  <strong>Brain MRI Viewer</strong>
+  <label>Zoom <input id="zoom" type="range" min="0.8" max="3.0" step="0.05" value="2.2" /></label>
+  <label><input id="show3d" type="checkbox" checked /> 3D Tile</label>
+  <label><input id="toggleTumor" type="checkbox" checked /> Tumor</label>
+  <label><input id="toggleUnc" type="checkbox" checked /> Uncertainty</label>
+</header>
+
+<canvas id="nv"></canvas>
+
+<script type="module">
+  import { Niivue, SLICE_TYPE, SHOW_RENDER } from
+    'https://cdn.jsdelivr.net/npm/@niivue/niivue/dist/index.js';
+
+  async function fetchAB(path) {
+    const r = await fetch(path);
+    if (!r.ok) throw new Error(`${path} -> ${r.status}`);
+    return r.arrayBuffer();
+  }
+
+  const nv = new Niivue({
+    isColorbar: false,
+    dragAndDropEnabled: true,
+    crosshairWidth: 1.5,
+    logging: false,
+  });
+  nv.attachTo('nv');
+
+  function setZoom(val) {
+    nv.setPan2Dzoom(0, 0, val);
+    requestAnimationFrame(() => nv.setPan2Dzoom(0, 0, val));
+  }
+
+  const zoomEl = document.getElementById('zoom');
+  const show3dEl = document.getElementById('show3d');
+  const tumorEl = document.getElementById('toggleTumor');
+  const uncEl = document.getElementById('toggleUnc');
+
+  try {
+    // --- Load background ---
+    const flairAB = await fetchAB('./flair_128.nii.gz');
+    await nv.loadFromArrayBuffer(flairAB, 'flair_128.nii.gz');
+
+    // --- Load overlays ---
+    const tumorAB  = await fetchAB('./tumor_labels.nii.gz');
+    const uncertAB = await fetchAB('./uncertainty.nii.gz');
+    const tumorVol  = await nv.loadFromArrayBuffer(tumorAB,  'tumor_labels.nii.gz');
+    const uncertVol = await nv.loadFromArrayBuffer(uncertAB, 'uncertainty.nii.gz');
+
+    // --- Custom LUTs (0 transparent) ---
+    const tumorLUT  = {R:[0,160,50,255], G:[0,32,200,128], B:[0,160,50,0], A:[0,0,200,200], I:[0,1,2,3]};
+    const uncertLUT = {R:[0,255,255,139,90], G:[0,255,0,0,0], B:[0,255,0,0,0], A:[0,0,100,160,200], I:[0,1,2,3,4]};
+    nv.addColormap('tumorLUT', tumorLUT);
+    nv.addColormap('uncertLUT', uncertLUT);
+    tumorVol.colormap  = 'tumorLUT';
+    uncertVol.colormap = 'uncertLUT';
+    tumorVol.opacity   = 0.6;
+    uncertVol.opacity  = 0.5;
+
+    // --- Multiplanar with 3D tile ---
+    nv.setSliceType(SLICE_TYPE.MULTIPLANAR);
+    nv.opts.multiplanarShowRender = SHOW_RENDER.AUTO;
+    nv.opts.multiplanarEqualSize = true;
+    nv.drawScene();
+
+    // --- Initial zoom ---
+    setZoom(parseFloat(zoomEl.value));
+
+    // --- Event listeners ---
+    zoomEl.addEventListener('input', e => setZoom(parseFloat(e.target.value)));
+
+    show3dEl.addEventListener('change', e => {
+      nv.opts.multiplanarShowRender = e.target.checked ? SHOW_RENDER.AUTO : SHOW_RENDER.NEVER;
+      nv.drawScene(); requestAnimationFrame(() => setZoom(parseFloat(zoomEl.value)));
+    });
+
+    tumorEl.addEventListener('change', e => {
+      nv.setVolumeVisibility(tumorVol.id, e.target.checked);
+      nv.drawScene();
+    });
+
+    uncEl.addEventListener('change', e => {
+      nv.setVolumeVisibility(uncertVol.id, e.target.checked);
+      nv.drawScene();
+    });
+
+    window.addEventListener('resize', () => {
+      nv.resizeListener();
+      setZoom(parseFloat(zoomEl.value));
+    });
+  } catch (err) {
+    console.error('Load failed:', err);
+  }
+</script>

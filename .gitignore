@@ -1,0 +1,16 @@
+# BraTS dataset (too large for GitHub)
+Research Project/BraTS2020_TrainingData/
+Research Project/BraTS2020_ValidationData/
+BraTS20_Training_*/
+
+# Files over GitHub's 100 MB limit
+Research Project/3D-Tumor-Volume.html
+Research Project/3D-Tumor-Volume2.html
+Research Project/test_rotation.html
+Research Project/Tumor visualisation.ipynb
+Research Project/Tumor visualisation y-rescale.ipynb
+
+# OS / editor clutter
+.DS_Store
+.history/
+.ipynb_checkpoints/
